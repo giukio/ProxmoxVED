@@ -109,9 +109,6 @@ for node in /dev/snd/*; do
   pct set "$CTID" -dev"${dev_index}" "$node,gid=${audio_gid}"
   dev_index=$((dev_index + 1))
 done
-if grep -q '^flatpak=yes$' <<<"$choices"; then
-  pct set "$CTID" -features nesting=1,keyctl=1,fuse=1
-fi
 if grep -q '^cec=yes$' <<<"$choices"; then
   video_gid="$(pct exec "$CTID" -- getent group video | cut -d: -f3)"
   input_gid="$(pct exec "$CTID" -- getent group input | cut -d: -f3)"
@@ -130,21 +127,37 @@ if grep -q '^cec=yes$' <<<"$choices"; then
   need_reboot=1
 fi
 if [[ "$need_reboot" -eq 1 ]]; then
+  pct shutdown "$CTID" --timeout 60 || pct stop "$CTID"
+fi
+if grep -q '^flatpak=yes$' <<<"$choices"; then
+  pct set "$CTID" -features nesting=1,keyctl=1,fuse=1
   grep -q '^lxc.mount.auto:' "/etc/pve/lxc/${CTID}.conf" || echo "lxc.mount.auto: proc:rw sys:rw" >>"/etc/pve/lxc/${CTID}.conf"
-  pct reboot "$CTID"
+fi
+if [[ "$need_reboot" -eq 1 ]]; then
+  pct start "$CTID"
   for _ in $(seq 1 30); do
-    pct exec "$CTID" -- true >/dev/null 2>&1 && break
+    pct exec "$CTID" -- ping -c 1 -W 2 flathub.org >/dev/null 2>&1 && break
     sleep 2
   done
 fi
+install_flatpak() {
+  local ref="$1"
+  local log="/tmp/flatpak-${CTID}.log"
+  if ! pct exec "$CTID" -- flatpak --system --noninteractive install -y flathub "$ref" >"$log" 2>&1; then
+    cat "$log"
+    msg_error "Flatpak install failed for ${ref}"
+    exit 1
+  fi
+  rm -f "$log"
+}
 if grep -q '^jellyfin=yes$' <<<"$choices"; then
-  pct exec "$CTID" -- flatpak install -y --noninteractive --system flathub com.github.iwalton3.jellyfin-media-player
+  install_flatpak com.github.iwalton3.jellyfin-media-player
 fi
 if grep -q '^vacuumtube=yes$' <<<"$choices"; then
-  pct exec "$CTID" -- flatpak install -y --noninteractive --system flathub rocks.shy.VacuumTube
+  install_flatpak rocks.shy.VacuumTube
 fi
 if grep -q '^moonlight=yes$' <<<"$choices"; then
-  pct exec "$CTID" -- flatpak install -y --noninteractive --system flathub com.moonlight_stream.Moonlight
+  install_flatpak com.moonlight_stream.Moonlight
 fi
 
 description
