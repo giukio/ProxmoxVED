@@ -62,7 +62,7 @@ audio_gid="$(pct exec "$CTID" -- getent group audio | cut -d: -f3)"
 dev_index="$(pct config "$CTID" | sed -n 's/^dev\([0-9]*\):.*/\1/p' | sort -n | tail -1)"
 dev_index=$((${dev_index:--1} + 1))
 for node in /dev/snd/*; do
-  [[ -e "$node" ]] || continue
+  [[ -c "$node" ]] || continue
   pct set "$CTID" -dev"${dev_index}" "$node,gid=${audio_gid}"
   dev_index=$((dev_index + 1))
 done
