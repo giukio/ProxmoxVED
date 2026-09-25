@@ -53,6 +53,39 @@ if [[ -t 0 ]] && command -v whiptail >/dev/null 2>&1; then
 fi
 
 start
+
+if [[ -z "${var_flatpak:-}" ]]; then
+  read -r -p "Enable Flatpak support? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_flatpak=yes ;; *) var_flatpak=no ;; esac
+fi
+if [[ "${var_flatpak}" == "yes" && -z "${var_jellyfin:-}" ]]; then
+  read -r -p "Install the Jellyfin Flatpak? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_jellyfin=yes ;; *) var_jellyfin=no ;; esac
+fi
+if [[ "${var_flatpak}" == "yes" && -z "${var_vacuumtube:-}" ]]; then
+  read -r -p "Install the VacuumTube (YouTube) Flatpak? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_vacuumtube=yes ;; *) var_vacuumtube=no ;; esac
+fi
+if [[ -z "${var_cec:-}" ]]; then
+  read -r -p "Pass through the HDMI-CEC adapter? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_cec=yes ;; *) var_cec=no ;; esac
+fi
+if [[ -z "${var_kdeconnect:-}" ]]; then
+  read -r -p "Install KDE Connect? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_kdeconnect=yes ;; *) var_kdeconnect=no ;; esac
+fi
+if [[ "${var_kdeconnect}" == "yes" && -z "${var_kdeconnect_device:-}" ]]; then
+  read -r -p "KDE Connect device id to pair (empty to skip): " var_kdeconnect_device </dev/tty || var_kdeconnect_device=""
+fi
+if [[ -z "${var_steam:-}" ]]; then
+  read -r -p "Install Steam? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_steam=yes ;; *) var_steam=no ;; esac
+fi
+if [[ -z "${var_dpms:-}" ]]; then
+  read -r -p "Disable screen blanking and the locker? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_dpms=yes ;; *) var_dpms=no ;; esac
+fi
+
 build_container
 pct set "$CTID" -onboot 0
 
