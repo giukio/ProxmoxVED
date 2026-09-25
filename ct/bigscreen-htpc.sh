@@ -19,6 +19,8 @@ var_gpu="${var_gpu:-yes}"
 export var_flatpak="${var_flatpak:-}"
 export var_jellyfin="${var_jellyfin:-}"
 export var_vacuumtube="${var_vacuumtube:-}"
+export var_moonlight="${var_moonlight:-}"
+export var_desktop="${var_desktop:-}"
 export var_cec="${var_cec:-}"
 export var_kdeconnect="${var_kdeconnect:-}"
 export var_kdeconnect_device="${var_kdeconnect_device:-}"
@@ -66,6 +68,14 @@ if [[ "${var_flatpak}" == "yes" && -z "${var_vacuumtube:-}" ]]; then
   read -r -p "Install the VacuumTube (YouTube) Flatpak? [y/N] " _ans </dev/tty || _ans=""
   case "${_ans,,}" in y | yes) var_vacuumtube=yes ;; *) var_vacuumtube=no ;; esac
 fi
+if [[ "${var_flatpak}" == "yes" && -z "${var_moonlight:-}" ]]; then
+  read -r -p "Install the Moonlight Flatpak? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_moonlight=yes ;; *) var_moonlight=no ;; esac
+fi
+if [[ -z "${var_desktop:-}" ]]; then
+  read -r -p "Install the full Plasma desktop as well? [y/N] " _ans </dev/tty || _ans=""
+  case "${_ans,,}" in y | yes) var_desktop=yes ;; *) var_desktop=no ;; esac
+fi
 if [[ -z "${var_cec:-}" ]]; then
   read -r -p "Pass through the HDMI-CEC adapter? [y/N] " _ans </dev/tty || _ans=""
   case "${_ans,,}" in y | yes) var_cec=yes ;; *) var_cec=no ;; esac
@@ -100,10 +110,7 @@ for node in /dev/snd/*; do
   dev_index=$((dev_index + 1))
 done
 if grep -q '^flatpak=yes$' <<<"$choices"; then
-  features="$(pct config "$CTID" | sed -n 's/^features: //p')"
-  [[ "$features" != *fuse=1* ]] && features="${features:+$features,}fuse=1"
-  pct set "$CTID" -features "$features"
-  grep -q '^lxc.mount.auto:' "/etc/pve/lxc/${CTID}.conf" || echo "lxc.mount.auto: proc:rw sys:rw" >>"/etc/pve/lxc/${CTID}.conf"
+  pct set "$CTID" -features nesting=1,keyctl=1,fuse=1
 fi
 if grep -q '^cec=yes$' <<<"$choices"; then
   video_gid="$(pct exec "$CTID" -- getent group video | cut -d: -f3)"
@@ -123,13 +130,21 @@ if grep -q '^cec=yes$' <<<"$choices"; then
   need_reboot=1
 fi
 if [[ "$need_reboot" -eq 1 ]]; then
+  grep -q '^lxc.mount.auto:' "/etc/pve/lxc/${CTID}.conf" || echo "lxc.mount.auto: proc:rw sys:rw" >>"/etc/pve/lxc/${CTID}.conf"
   pct reboot "$CTID"
+  for _ in $(seq 1 30); do
+    pct exec "$CTID" -- true >/dev/null 2>&1 && break
+    sleep 2
+  done
 fi
 if grep -q '^jellyfin=yes$' <<<"$choices"; then
-  pct exec "$CTID" -- flatpak install -y flathub com.github.iwalton3.jellyfin-media-player
+  pct exec "$CTID" -- flatpak install -y --noninteractive --system flathub com.github.iwalton3.jellyfin-media-player
 fi
 if grep -q '^vacuumtube=yes$' <<<"$choices"; then
-  pct exec "$CTID" -- flatpak install -y flathub rocks.shy.VacuumTube
+  pct exec "$CTID" -- flatpak install -y --noninteractive --system flathub rocks.shy.VacuumTube
+fi
+if grep -q '^moonlight=yes$' <<<"$choices"; then
+  pct exec "$CTID" -- flatpak install -y --noninteractive --system flathub com.moonlight_stream.Moonlight
 fi
 
 description

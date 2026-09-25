@@ -101,6 +101,7 @@ export XDG_SESSION_TYPE=wayland
 export QT_QPA_PLATFORM=wayland
 export XDG_CURRENT_DESKTOP=KDE
 export PLASMA_DEFAULT_SHELL=org.kde.plasma.bigscreen
+export PLASMA_PLATFORM=mediacenter
 if [[ -f "${XDG_RUNTIME_DIR}/htpc-drm.env" ]]; then
   # shellcheck disable=SC1091
   source "${XDG_RUNTIME_DIR}/htpc-drm.env"
@@ -130,6 +131,7 @@ Environment=XDG_SESSION_TYPE=wayland
 Environment=QT_QPA_PLATFORM=wayland
 Environment=XDG_CURRENT_DESKTOP=KDE
 Environment=PLASMA_DEFAULT_SHELL=org.kde.plasma.bigscreen
+Environment=PLASMA_PLATFORM=mediacenter
 
 [Install]
 WantedBy=default.target
@@ -166,6 +168,7 @@ EOF
   else
     var_jellyfin=no
     var_vacuumtube=no
+    var_moonlight=no
   fi
 
   msg_info "Installing HDMI audio support"
@@ -260,11 +263,17 @@ EOF
   if [[ "${var_kdeconnect}" == "yes" ]]; then
     msg_info "Installing KDE Connect"
     $STD pacman -S --needed --noconfirm kdeconnect
-    install -d /etc/systemd/user/kdeconnectd.service.d
+    install -d /etc/systemd/user/kdeconnectd.service.d /etc/systemd/user/plasma-kdeconnect.service.d
+    install -d -o htpc -g htpc /home/htpc/.config/plasma-workspace/env
     cat <<'EOF' >/etc/systemd/user/kdeconnectd.service.d/htpc-tv.conf
 [Service]
 Environment=PLASMA_PLATFORM=mediacenter
 EOF
+    cp /etc/systemd/user/kdeconnectd.service.d/htpc-tv.conf /etc/systemd/user/plasma-kdeconnect.service.d/htpc-tv.conf
+    cat <<'EOF' >/home/htpc/.config/plasma-workspace/env/htpc-mediacenter.sh
+export PLASMA_PLATFORM=mediacenter
+EOF
+    chown htpc:htpc /home/htpc/.config/plasma-workspace/env/htpc-mediacenter.sh
     msg_ok "Installed KDE Connect"
   fi
 
@@ -302,6 +311,66 @@ EOF
     msg_ok "Installed Steam"
   fi
 
+  if [[ "${var_desktop:-no}" == "yes" ]]; then
+    msg_info "Installing the Plasma desktop"
+    $STD pacman -S --needed --noconfirm plasma konsole
+    cat <<'EOF' >/usr/local/bin/htpc-start-plasma-desktop
+#!/bin/bash
+set -euo pipefail
+export XDG_SESSION_TYPE=wayland
+export QT_QPA_PLATFORM=wayland
+export XDG_CURRENT_DESKTOP=KDE
+export PLASMA_DEFAULT_SHELL=org.kde.plasma.desktop
+unset PLASMA_PLATFORM || true
+if [[ -f "${XDG_RUNTIME_DIR}/htpc-drm.env" ]]; then
+  # shellcheck disable=SC1091
+  source "${XDG_RUNTIME_DIR}/htpc-drm.env"
+fi
+exec /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland
+EOF
+    chmod 755 /usr/local/bin/htpc-start-plasma-desktop
+    cat <<'EOF' >/etc/systemd/user/plasma-desktop-htpc.service
+[Unit]
+Description=Plasma Desktop HTPC session
+After=basic.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/bin/htpc-wait-drm.sh
+ExecStart=/usr/local/bin/htpc-start-plasma-desktop
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+Environment=XDG_SESSION_TYPE=wayland
+Environment=QT_QPA_PLATFORM=wayland
+Environment=XDG_CURRENT_DESKTOP=KDE
+Environment=PLASMA_DEFAULT_SHELL=org.kde.plasma.desktop
+
+[Install]
+WantedBy=default.target
+EOF
+    cat <<'EOF' >/usr/local/bin/htpc-session
+#!/bin/bash
+set -euo pipefail
+case "${1:-}" in
+  desktop)
+    systemctl --user disable --now plasma-bigscreen-htpc.service
+    systemctl --user enable --now plasma-desktop-htpc.service
+    ;;
+  bigscreen)
+    systemctl --user disable --now plasma-desktop-htpc.service
+    systemctl --user enable --now plasma-bigscreen-htpc.service
+    ;;
+  *)
+    echo "Usage: htpc-session desktop|bigscreen" >&2
+    exit 1
+    ;;
+esac
+EOF
+    chmod 755 /usr/local/bin/htpc-session
+    msg_ok "Installed the Plasma desktop"
+  fi
+
   if [[ -z "${var_dpms:-}" ]]; then
     if prompt_confirm "Disable screen blanking and the screen locker?" "n" 60; then
       var_dpms=yes
@@ -314,6 +383,8 @@ EOF
 flatpak=${var_flatpak}
 jellyfin=${var_jellyfin}
 vacuumtube=${var_vacuumtube}
+moonlight=${var_moonlight}
+desktop=${var_desktop}
 cec=${var_cec}
 kdeconnect=${var_kdeconnect}
 steam=${var_steam}
